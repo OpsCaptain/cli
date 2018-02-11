@@ -6,7 +6,9 @@ var fs = require('fs'),
     authfile = path.join(home_dir, 'ocauth.json');
 
 global.__OC_DIR = home_dir; 
-global.__OC_CLI = 'OpsCaptain CLI (v1.0.7)';
+global.__OC_CLI = 'OpsCaptain CLI (v1.1.3)';
+
+occ.blueFont(global.__OC_CLI);
 
 if (fs.existsSync(authfile)) {
     occ.debug('Authentication file [' + authfile + '] exists');
@@ -30,9 +32,6 @@ if (fs.existsSync(authfile)) {
         occ.debug('Failed to retrieve apikey from auth.json file with error: ' + e);
     }
 }
-
-
-occ.blueFont(global.__OC_CLI);
 
 process.argv.splice(0, 2);
 

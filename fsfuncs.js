@@ -1,4 +1,6 @@
-var fs = require('fs');
+var fs = require('fs'),
+    path = require('path'), 
+    cli = require('./occ');
 
 function GetJsonObject(fn) {
     if (fs.existsSync(fn)) {
@@ -7,13 +9,36 @@ function GetJsonObject(fn) {
             return JSON.parse(filec);
         }
         catch (e) {
-            occ.writeerror('Unable to retrieve APIKey from stored auth.json file - Error: ' + e.toString());
+            occ.writeerror('Failed parsing json object from file with error: ' + e.toString());
         }
     }
 
     return null;
 }
 
-module.exports = {
-    ObjectFromFile : GetJsonObject
+var funcs = {
+    ObjectFromFile: GetJsonObject,
+    constants: {
+        OC_MANIFEST: 'ocmanifest.json',
+        OC_IGNORE: '.ocignore'
+    },
+    resolveAppName: function (binary_path) {
+        var auto_detect_manifest = path.join(binary_path, funcs.constants.OC_MANIFEST);
+
+        if (fs.existsSync(auto_detect_manifest)) {
+            environment_file = auto_detect_manifest;
+            
+            var obj = GetJsonObject(environment_file);
+            if (obj == null)
+                return;
+
+            if (obj.name) return obj.name; 
+        }
+
+        var name = path.basename(binary_path);
+        cli.writeline('Using application name: ' + cli.writevariable(name))
+        return name; 
+    }
 }
+
+module.exports = funcs;

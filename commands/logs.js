@@ -1,10 +1,12 @@
 var cli = require('../occ'),
     fs = require('fs'),
     path = require('path'),
+    fsfuncs = require('../fsfuncs'),
     request = require('request'), 
     remote = require('../remotecommon'), 
     endpoints = require('../endpoints'); 
 
+var _CMD = 'logs'; 
 
 function LogEntry(obj, set_label) {
     this.ts = obj.time;
@@ -51,7 +53,7 @@ function Print(p_set) {
     console.log(cli.colors.BRIGHT_YELLOW + p_set[0].ts + ' -- ' + p_set[0].label + cli.colors.RESET);
     var prefix = '    ';
 
-    if (p_set[o].is_error) {
+    if (p_set[0].is_error) {
         p_set[0].PrintError(prefix);
 
         for (var i = 1; i < p_set.length; i++)
@@ -71,33 +73,39 @@ function HandleRequest(args) {
     if (!cli.isAuthenticated())
         return;
 
-    if (!args || !args.length) {
-        cli.missingArgs();
-        return;
-    }
-
-    var application_name = null,  app_id = null, print_num = 100, is_db_logs = false;
-    for (var i = 0, v; i < args.length; i += 2) {
-        switch (args[i]) {
-            case '-n':
-                application_name = cli.nextArg(args, i);
-                break;
-            case '-i':
-                app_id = cli.nextArg(args, i); 
-                break;
-            case '--tail':
-                print_num = cli.nextIntArg(args, i); 
-                break;
-            case '--db':
-                is_db_logs = true;
-                break; 
-            default:
-                cli.errors.unknownSwitch(args[i], 'logs');
-                return; 
+    var application_name = null, app_id = null, print_num = 100, is_db_logs = false;
+    if (args && args.length > 0) {
+        for (var i = 0, v; i < args.length; i += 2) {
+            switch (args[i]) {
+                case '-n':
+                    application_name = cli.nextArg(args, i);
+                    break;
+                case '-i':
+                    app_id = cli.nextArg(args, i);
+                    break;
+                case '--tail':
+                    print_num = cli.nextIntArg(args, i);
+                    break;
+                case '--db':
+                    is_db_logs = true;
+                    break;
+                default:
+                    cli.errors.unknownSwitch(args[i], _CMD);
+                    return;
+            }
         }
     }
 
-    remote.resolveAppId(application_name, app_id, 'logs', function (id) {
+    if (application_name == null) {
+        application_name = fsfuncs.resolveAppName(process.cwd());
+
+        if (application_name == null || application_name == "") {
+            cli.errors.expectsName(_CMD);
+            return;
+        }
+    }
+
+    remote.resolveAppId(application_name, app_id, _CMD, function (id) {
 
         var query_str = {
             appid : id

@@ -6,15 +6,18 @@ var cli = require('../occ'),
     request = require('request'),
     status = require('../deploymentstatus'),
     endpoints = require('../endpoints'),
-    remote = require('../remotecommon'); 
+    remote = require('../remotecommon'), 
+    spawn = require('child_process').spawn; 
 
 var OC_BUNDLE_FILENAME = '__ocbundle__.zip',
     OC_ASSET_STATE_NEW = 1,
-    OC_IGNORE = '.ocignore',
+    OC_IGNORE = fsfuncs.constants.OC_IGNORE,
     OC_REMOTE_DELETIONS_FILENAME = '__ocremote_delete__',
     OC_ASSET_STATE_MODIFIED = 2,
     OC_ASSET_UNCHANGED = 3,
-    OC_DEPLOY_ENDPOINT = endpoints.deploy; 
+    OC_DEPLOY_ENDPOINT = endpoints.deploy,
+    OC_DETECT_METEOR = '.meteor/release',
+    OC_MANIFEST = fsfuncs.constants.OC_MANIFEST;;
 
 
 function recursivelyAddToArchive(base_dir, p_array, tracker, is_base_dir, ignore_set) {
@@ -59,12 +62,28 @@ function recursivelyAddToArchive(base_dir, p_array, tracker, is_base_dir, ignore
     }
 }
 
-function deploy(bundle_path, app_name, meta_data, unlink) {
+function deploy(bundle_path, app_name, oc_env, unlink) {
     var id = cli.randomId();
     var request_path = OC_DEPLOY_ENDPOINT;
+
+    var meta_data = {
+        buildpack: oc_env.buildpack
+    }
+
+    if (oc_env.rollupdateaftersecs)
+        meta_data['rollupdateaftersecs'] = oc_env.rollupdateaftersecs;
+
+    if (oc_env.rollupdatepingsuccess)
+        meta_data['rollupdatepingsuccess'] = '1';
+
+
+    if (oc_env.env)
+        meta_data['env'] = oc_env.env; 
+
     meta_data['deployid'] = id;
     meta_data['appid'] = app_name;
 
+    cli.writeline('Binary info: ' + JSON.stringify(meta_data, null, 2)); 
     cli.writeline('Lift off!');
     console.log(''); 
 
@@ -77,7 +96,7 @@ function deploy(bundle_path, app_name, meta_data, unlink) {
                 value: fs.createReadStream(bundle_path),
                 options: {
                     filename: OC_BUNDLE_FILENAME,
-                    contentType: 'aapplication/zip'
+                    contentType: 'application/zip'
                 }
             }
         }
@@ -95,7 +114,108 @@ function deploy(bundle_path, app_name, meta_data, unlink) {
     prog.startPolling(); 
 }
 
-function Package(binary_path, environment_file, application_name, roll_update_on_url_ping, roll_update_after_wait) {
+function resolveJsonFile(binary_path, use_path) {
+    var file_path = path.join(binary_path, use_path);
+    if (!fs.existsSync(file_path)) {
+        file_path = use_path; 
+        if (!fs.existsSync(file_path)) {
+            cli.writeerror('The specified file ' + cli.writevariable(use_path) + ' cannot be found');
+            return;
+        }
+    }
+
+    var jobject = fsfuncs.ObjectFromFile(file_path);
+    if (jobject == null) {
+        cli.writeerror('Invalid JSON in file ' + cli.writevariable(use_path));
+    }
+
+    return jobject;
+}
+
+function MeteorBuild(binary_path, app_id, environment, cb) {
+    var buildOptions = environment.meteorbuild;
+    var args = [];
+
+    var executable = buildOptions.executable || 'meteor';
+
+    if (!buildOptions.disableSuperuser)
+        args.push('--allow-superuser');
+
+    args.push('build');
+
+    var output_bin_path = binary_path;
+
+    if (buildOptions.buildLocation)
+        output_bin_path = buildOptions.buildLocation; 
+
+    var build_file_name = path.basename(output_bin_path) + '.tar.gz';
+    var build_output = path.join(output_bin_path, build_file_name);
+    args.push(output_bin_path);
+
+    if (fs.existsSync(build_output))
+        fs.unlinkSync(build_output); 
+
+    args.push('--architecture');
+    args.push('os.linux.x86_64');
+
+    if (buildOptions.mobileSettings) {
+        args.push('--mobile-settings');
+        args.push(JSON.stringify(buildOptions.mobileSettings));
+    }
+
+    if (buildOptions.serverOnly) {
+        args.push('--server-only');
+    } else if (!buildOptions.mobileSettings) {
+        args.push('--mobile-settings');
+        args.push(path.join(binary_path, 'settings.json'));
+    }
+
+    if (buildOptions.server) {
+        args.push('--server');
+        args.push(buildOptions.server);
+    }
+
+    if (buildOptions.allowIncompatibleUpdate) {
+        args.push('--allow-incompatible-update');
+    }
+
+    var isWin = /^win/.test(process.platform);
+    if (isWin) {
+        // Sometimes cmd.exe not available in the path
+        // See: http://goo.gl/ADmzoD
+        executable = process.env.comspec || 'cmd.exe';
+        args = ['/c', 'meteor'].concat(args);
+    }
+
+    var env = process.env; 
+    env['METEOR_HEADLESS'] = 1; 
+    var options = {
+        cwd: binary_path,
+        env: env,
+        stdio: 'inherit'
+    }; 
+
+    cli.writeline('Build command: ' + executable + ' ' + args.join(" "));
+
+    var meteor = spawn(executable, args, options);
+
+    meteor.on('error', e => {
+        cli.writeerror(options);
+        cli.writeerror(e);
+        cli.writeerror('This error usually happens when meteor is not installed.');
+    });
+    meteor.on('close', function () {
+
+        if (!fs.existsSync(build_output)) {
+            cli.writeerror('Cannot find the build ouput of your meteor application: ' + cli.writevariable(build_file_name) + ' in the build location: ' + output_bin_path); 
+            return; 
+        }
+
+        cb(build_output); 
+    });
+}
+
+function Package(binary_path, environment, application_name, meteor_settings_file, start_script) {
     cli.writeline('Using application directory ' + cli.writevariable(binary_path));
 
     if (!fs.existsSync(binary_path)) {
@@ -103,22 +223,18 @@ function Package(binary_path, environment_file, application_name, roll_update_on
         process.exit(1);
     }
 
-    var environment = {};
+    var build_pack = 'node';
 
-    if (environment_file != null) {
-        var environment_path = path.join(binary_path, environment_file);
-        if (!fs.existsSync(environment_path)) {
-            environment_path = environment_file;
-            if (!fs.existsSync(environment_path)) {
-                cli.writeerror('The specified file ' + cli.writevariable(environment_file) + ' cannot be found');
-                return;
-            }
-        }
+    if (meteor_settings_file != null) {
+        var meteor_obj = resolveJsonFile(binary_path, meteor_settings_file); 
+        if (meteor_obj == null)
+            return;
 
-        environment = fsfuncs.ObjectFromFile(environment_path);
-        if (environment == null) {
-            cli.writeerror('Invalid JSON in environment variables file ' + cli.writevariable(environment_file));
-        }
+        if (!environment.env)
+            environment.env = {}; 
+
+        environment.env["METEOR_SETTINGS"] = JSON.stringify(meteor_obj);
+        build_pack = 'meteor';
     }
 
     if (!fs.lstatSync(binary_path).isDirectory()) {
@@ -130,13 +246,31 @@ function Package(binary_path, environment_file, application_name, roll_update_on
             cli.writeerror('Acceptable file formats to deploy include: [.zip], [.tgz], [.tar.gz], [.jar] and [.war]');
             return;
         }
-        deploy(binary_path, application_name, {
-            spurl: roll_update_on_url_ping,
-            swait: roll_update_after_wait,
-            incremental: "0",
-            env: environment
-        }, false);
+
+        build_pack = 'remote-detect'; // the application has already been buold..
+        environment['buildpack'] = build_pack;
+
+        deploy(binary_path, application_name, environment, false);
         return;
+    }
+
+    var meteor_release = path.join(binary_path, OC_DETECT_METEOR);
+    if (fs.existsSync(meteor_release)) {
+        cli.writeline('Meteor.js framework detected');
+        build_pack = 'meteor';
+        if (!environment.meteorbuild)
+            environment.meteorbuild = {};
+
+        MeteorBuild(binary_path, application_name, environment, function (bin_path) {
+
+            build_pack = 'meteor';
+            environment['buildpack'] = build_pack;
+
+            deploy(bin_path, application_name, environment, true);
+
+        });
+
+        return; 
     }
 
     var changes_track_file = __dirname + '/' + application_name + '.json';
@@ -163,10 +297,13 @@ function Package(binary_path, environment_file, application_name, roll_update_on
     }
     */
 
+    environment['buildpack'] = build_pack;
+
     var ignore_file = path.join(binary_path, OC_IGNORE),
         ignore_set = {
             '.git': 1,
-            '.ocignore': 1
+            '.ocignore': 1,
+            'node_modules': 1
         };//put ignore files in a dict for easy lookup
 
     if (fs.existsSync(ignore_file)) {
@@ -236,12 +373,7 @@ function Package(binary_path, environment_file, application_name, roll_update_on
         cli.writeline('Length of zip archive in bytes: [' + archive.pointer() + ']');
        // fs.writeFileSync(changes_track_file, JSON.stringify(obj));
 
-        deploy(bundle_path, application_name, {
-            spurl: roll_update_on_url_ping,
-            swait: roll_update_after_wait,
-            incremental: "1",
-            env: environment
-        }, true);
+        deploy(bundle_path, application_name, environment, true);
     });
 
 
@@ -283,51 +415,71 @@ function HandleRequest(args) {
     if (!cli.isAuthenticated())
         return; 
 
-    if (!args || !args.length) {
-        cli.missingArgs(); 
-        return; 
+    var cdir = process.cwd(), binary_path = cdir, application_name = null, app_id = null, environment_file = null, reset_tracking = false,
+    meteor_settings_file = null,
+    cmd = null;
+
+    if (args && args.length > 0) {
+        for (var i = 0, v; i < args.length; i += 2) {
+            switch (args[i]) {
+                case '-p':
+                    binary_path = cli.nextArg(args, i);
+                    break;
+                case '-i':
+                    app_id = cli.nextArg(args, i);
+                    break;
+                case '-n':
+                    application_name = cli.nextArg(args, i);
+                    break;
+                case '-e':
+                    environment_file = cli.nextArg(args, i);
+                    break;
+                case '--rs':
+                    reset_tracking = true;
+                    break;
+                case '--cmd':
+                    cmd = cli.nextArg(args, i);
+                    break;
+                case '-msf':
+                    meteor_settings_file = cli.nextArg(args, i);
+                    break;
+                default:
+                    cli.errors.unknownSwitch(args[i], 'deploy');
+                    return;
+            }
+        }
     }
 
-    var cdir = process.cwd(), binary_path = cdir, application_name = null, app_id = null, environment_file = null, reset_tracking = false,
-        roll_update_on_url_ping = '', // specify a url which ocagent must ping against the new container to confirm the old container can be gced
-        roll_update_after_wait = 3; // require ocagent to wait for x amount of seconds for the new container to boot before gcing the old container.
+    var environment = {};
 
-    for (var i = 0, v; i < args.length; i += 2) {
-        switch (args[i]) {
-            case '-p':
-                binary_path = cli.nextArg(args, i);
-                break;
-            case '-i':
-                app_id = cli.nextArg(args, i); 
-                break; 
-            case '-n':
-                application_name = cli.nextArg(args, i);
-                break;
-            case '-e':
-                environment_file = cli.nextArg(args, i); 
-                break;
-            case '--rs':
-                reset_tracking = true; 
-                break; 
-            case '-spurl':
-                roll_update_on_url_ping = cli.nextArg(args, i); 
-                break;
-            case '-swait':
-                roll_update_after_wait = cli.nextIntArg(args, i);
-                if (roll_update_after_wait > 120) {
-                    cli.writeerror('-swait expects a value between [0 and 120] seconds.'); 
-                }
-                break;
-            default:
-                cli.errors.unknownSwitch(args[i], 'deploy'); 
-                return; 
+    if (environment_file == null) {
+        var auto_detect_manifest = path.join(binary_path, OC_MANIFEST);
+        cli.writeline('Find manifest file at ' + auto_detect_manifest); 
+        if (fs.existsSync(auto_detect_manifest)) {
+            environment_file = auto_detect_manifest;
+            cli.writeline('Detected ' + cli.writevariable(OC_MANIFEST) + ' in application root directory'); 
+            if ((environment = resolveJsonFile(binary_path, environment_file)) == null)
+                return;
         }
+    }
+    else {
+        if ((environment = resolveJsonFile(binary_path, environment_file)) == null)
+            return;
+    }
+
+    if (application_name == null && app_id == null) {
+        if (environment.name)
+            application_name = environment.name;
+        else
+            application_name = path.basename(binary_path);
+        
+        cli.writeline('Using application name: ' + cli.writevariable(application_name)); 
     }
 
     remote.resolveAppId(application_name, app_id, 'deploy', function (id) {
         cli.debug('Deploy to application with id ' + cli.writevariable(id));
 
-        Package(binary_path, environment_file, id, roll_update_on_url_ping, roll_update_after_wait);
+        Package(binary_path, environment, id, meteor_settings_file, cmd);
     });
 }
 

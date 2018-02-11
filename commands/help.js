@@ -24,5 +24,8 @@ module.exports = function (args) {
     str.push('  --db      The specified command is to be executed for database containers instead of app containers\n');
     str.push('  -em       The email address to be used with the login command\n');
     str.push('  -pw       The password of your email account\n');
+    str.push('\n')
+    str.push('Examples:\n');
+    str.push('  deploy    opscaptain deploy -n myapp\n');
     console.log(str.join("")); 
 }

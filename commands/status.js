@@ -1,6 +1,9 @@
 var cli = require('../occ'),
     request = require('request'),
     remote = require('../remotecommon'),
+    fsfuncs = require('../fsfuncs'),
+    path = require('path'),
+    fs = require('fs'), 
     endpoints = require('../endpoints');
 
 function writeCell(e, padding) {
@@ -23,26 +26,28 @@ function HandleRequest(args) {
     if (!cli.isAuthenticated())
         return;
 
-    if (!args || !args.length) {
-        cli.missingArgs();
-        return;
-    }
-
     var application_name = null;
-    for (var i = 0, v; i < args.length; i += 2) {
-        switch (args[i]) {
-            case '-n':
-                application_name = cli.nextArg(args, i);
-                break;
-            default:
-                cli.errors.unknownSwitch(args[i], 'status');
-                return; 
+
+    if (args && args.length > 0) {
+        for (var i = 0, v; i < args.length; i += 2) {
+            switch (args[i]) {
+                case '-n':
+                    application_name = cli.nextArg(args, i);
+                    break;
+                default:
+                    cli.errors.unknownSwitch(args[i], 'status');
+                    return;
+            }
         }
     }
 
-    if(application_name == null){
-        cli.errors.expectsName('status');
-        return; 
+    if (application_name == null) {
+        application_name = fsfuncs.resolveAppName(process.cwd());
+
+        if (application_name == null || application_name == "") {
+            cli.errors.expectsName('status');
+            return;
+        }
     }
 
     var query_str = {

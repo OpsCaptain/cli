@@ -16,29 +16,6 @@ function DeploymentStatus(deployment_id, app_id) {
     var self = this;
 
     this.PrintStatus = function (obj) {
-        if (obj.err.length > 0) {
-            var i = obj.err.indexOf('{');
-            if (i > -1) {
-                var err = obj.err.substring(i);
-
-                try 
-                {
-                    var node = JSON.parse(err);
-                    err = node.err.split("\\n");
-                    for (var i = 0; i < err.length; i++)
-                        cli.errorline(err[i].replace(/\\/g, ''));
-
-                    return; 
-                }
-                catch (e) {
-
-                }
-            }
-
-            cli.writeerror(obj.err); 
-            return; 
-        }
-
         if (obj.logs && obj.logs.length > 0) {
             for (var i = 0; i < obj.logs.length; i++) {
                 if (obj.logs[i] == 'Done') {
@@ -55,6 +32,28 @@ function DeploymentStatus(deployment_id, app_id) {
                 else
                     console.log(log_entry); 
             }
+        }
+
+        if (obj.err.length > 0) {
+            var i = obj.err.indexOf('{');
+            if (i > -1) {
+                var err = obj.err.substring(i);
+
+                try {
+                    var node = JSON.parse(err);
+                    err = node.err.split("\\n");
+                    for (var i = 0; i < err.length; i++)
+                        cli.errorline(err[i].replace(/\\/g, ''));
+
+                    return;
+                }
+                catch (e) {
+
+                }
+            }
+
+            cli.writeerror(obj.err);
+            return;
         }
 
         cli.debug('Poll for deployment status after 2 seconds');

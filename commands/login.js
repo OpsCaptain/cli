@@ -28,12 +28,12 @@ function HandleRequest(args) {
     }
 
     if (email == null || email == "" || email === undefined) {
-        cli.errors.expectsParameter('-e', _NAME); 
+        cli.errors.expectsParameter('-em', _NAME); 
         return; 
     }
 
     if (password == null || password == "" || password == undefined) {
-        cli.errors.expectsParameter('-p', _NAME); 
+        cli.errors.expectsParameter('-pw', _NAME); 
         return; 
     }
 
