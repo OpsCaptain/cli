@@ -6,7 +6,7 @@ var fs = require('fs'),
     authfile = path.join(home_dir, 'ocauth.json');
 
 global.__OC_DIR = home_dir; 
-global.__OC_CLI = 'OpsCaptain CLI (v1.1.3)';
+global.__OC_CLI = 'OpsCaptain CLI (v1.1.5)';
 
 occ.blueFont(global.__OC_CLI);
 
@@ -46,7 +46,7 @@ if (process.argv.length > 0) {
     }
 }
 else {
-    occ.writeerror('Must specify a command to exeute - Use [oc help] for more details');
+    occ.writeerror('Must specify a command to exeute - Use [opscaptain help] for more details');
 }
 
 

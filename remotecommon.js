@@ -3,11 +3,32 @@ var request = require('request'),
     cli = require('./occ');
 
 var common = {
+    stickyCookie : null,
+    getSticky : function(res){
+        for (var s in res.headers) {
+            if (s == 'set-cookie') {
+                var cookies = res.headers[s];
+                for (var i = 0; i < cookies.length; i++) {
+                    if (cookies[i].indexOf('route=') > -1) {
+                        common.stickyCookie = cookies[i]; 
+                    }
+                }
+            }
+        }
+    }, 
     getRequestHeaders: function () {
-        return {
+        var obj = {
             'User-Agent': global.__OC_CLI,
             'Authorization': 'Bearer ' + global.__OC_API_TOKEN
         };
+
+        if (common.stickyCookie != null) {
+            obj['Cookie'] = common.stickyCookie; 
+        }
+
+        cli.debug(JSON.stringify(obj)); 
+
+        return obj; 
     },
     ByAppId: function (url, application_name, app_id, cmd, params, method, cb) {
         cli.debug('Request url: ' + url);
@@ -38,6 +59,7 @@ var common = {
                     return;
                 }
 
+                common.getSticky(res); 
                 cb(body); 
             });
         }); 
@@ -94,6 +116,7 @@ var common = {
                 }
             }
             else if (body) {
+                common.getSticky(res);
                 cli.debug('Remote response: ' + body);
                 var obj = JSON.parse(body);
                 obj = obj['ids']; 
