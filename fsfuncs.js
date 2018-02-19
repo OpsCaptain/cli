@@ -9,7 +9,7 @@ function GetJsonObject(fn) {
             return JSON.parse(filec);
         }
         catch (e) {
-            occ.writeerror('Failed parsing json object from file with error: ' + e.toString());
+            cli.writeerror('Failed parsing json object from file with error: ' + e.toString());
         }
     }
 

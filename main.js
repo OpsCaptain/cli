@@ -6,7 +6,7 @@ var fs = require('fs'),
     authfile = path.join(home_dir, 'ocauth.json');
 
 global.__OC_DIR = home_dir; 
-global.__OC_CLI = 'OpsCaptain CLI (v1.1.5)';
+global.__OC_CLI = 'OpsCaptain CLI (v1.2.5)';
 
 occ.blueFont(global.__OC_CLI);
 

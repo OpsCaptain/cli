@@ -33,6 +33,10 @@ function recursivelyAddToArchive(base_dir, p_array, tracker, is_base_dir, ignore
 
         var fs_asset = path.join(base_dir, files[i]);
 
+        if (fs.lstatSync(fs_asset).isSymbolicLink()) {
+            fs_asset = fs.realpathSync(fs_asset);
+        }
+
         if (fs.lstatSync(fs_asset).isDirectory()) {
 
             p_array.push(files[i]);
@@ -136,8 +140,10 @@ function hasAssetEndingWith(bin_path, asset) {
     var files = fs.readdirSync(bin_path);
     asset = asset.substring(1);
     for (var i = 0; i < files.length; i++) {
-        if (files[i].endsWith(asset))
+        if (files[i].endsWith(asset)) {
+            cli.debug('Match: [' + files[i] + '] endsWith: [' + asset + ']'); 
             return true;
+        }
     }
     return false;
 }
@@ -151,8 +157,8 @@ function DetectApplicationType(bin_path) {
         Go: ['glide.yaml', 'Gopkg.toml', 'Gopkg.lock', 'Godeps/Godeps.json', 'vendor/vendor.json', 'src|*.go', 'vendor|*.go'],
         Dotnet: ['*.runtimeconfig.json', '*.csproj', '*.fsproj', '*.fsproj'],
         Python: ['requirements.txt', 'setup.py', 'environment.yml', 'Pipfile'],
+        Meteor: ['.meteor/release'], 
         Nodejs: ['package.json'],
-        Meteor: ['.meteor/release'],
         Static: ['Staticfile']
     };
 
@@ -327,6 +333,13 @@ function Package(binary_path, environment, application_name, start_script) {
         if (!environment.meteorbuild)
             environment.meteorbuild = {};
 
+        if (environment.meteorsettings) {
+            var obj = resolveJsonFile(binary_path, environment.meteorsettings);
+            if (obj == null) return;
+
+            environment.env['METEOR_SETTINGS'] = JSON.stringify(obj);
+        }
+
         MeteorBuild(binary_path, application_name, environment, function (bin_path) {
             deploy(bin_path, application_name, environment, true);
         });
@@ -362,7 +375,8 @@ function Package(binary_path, environment, application_name, start_script) {
         ignore_set = {
             '.git': 1,
             '.ocignore': 1,
-            'node_modules': 1
+            'node_modules': 1,
+            '__ocbundle__.zip': 1
         };//put ignore files in a dict for easy lookup
 
     if (fs.existsSync(ignore_file)) {
@@ -430,15 +444,11 @@ function Package(binary_path, environment, application_name, start_script) {
 
     output.on('close', function () {
         cli.writeline('Length of zip archive in bytes: [' + archive.pointer() + ']');
-       // fs.writeFileSync(changes_track_file, JSON.stringify(obj));
-
         deploy(bundle_path, application_name, environment, true);
     });
 
 
-    output.on('end', function () {
-
-    });
+    output.on('end', function () {});
 
 
     archive.on('warning', function (err) {
@@ -459,10 +469,19 @@ function Package(binary_path, environment, application_name, start_script) {
 
     archive.pipe(output);
 
-    cli.writeline('Creating zip archive'); 
+    cli.writeline('Creating zip archive');
 
-    for (var s in changes)
-        archive.append(fs.createReadStream(changes[s].path), { name: s });
+    for (var s in changes) {
+        try 
+        {
+            archive.append(fs.createReadStream(changes[s].path), { name: s });
+        }
+        catch (e) {
+            cli.writeerror('Cannot add resource to archive - Error: ' + e);
+            cli.writeerror(changes[s].path);
+            return;
+        }
+    }
 
     if (remote_delete.length > 0)
         archive.append(JSON.stringify(remote_delete), { name: OC_REMOTE_DELETIONS_FILENAME });
@@ -531,7 +550,7 @@ function HandleRequest(args) {
         }
     }
     else {
-        bin_path = binary_bin_path;
+        bin_path = binary_path;
     }
 
 

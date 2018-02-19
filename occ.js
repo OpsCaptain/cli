@@ -41,7 +41,8 @@ function switchExpectsValue(args, i) {
 
 if (!"".hasOwnProperty("endsWith")) {
     String.prototype.endsWith = function (value) {
-        return this.indexOf(value) == this.length - value.length;
+        var i = this.indexOf(value);
+        return i > -1 && i == this.length - value.length;
     };
 }
 

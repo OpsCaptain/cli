@@ -29,6 +29,7 @@ module.exports = function (args) {
     str.push('\n')
     str.push('Buildpacks:\n');
     str.push('  nodejs    https://github.com/heroku/heroku-buildpack-nodejs\n');
+    str.push('  meteor    https://www.opscaptain.com/docs/nodejs/meteorjs-hosting (For Meteor.js projects)\n');
     str.push('  ruby      https://github.com/cloudfoundry/ruby-buildpack\n');
     str.push('  dotnet    https://github.com/cloudfoundry/dotnet-core-buildpack/\n');
     str.push('  python    https://github.com/cloudfoundry/python-buildpack\n');
