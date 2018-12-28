@@ -6,7 +6,7 @@ function GetJsonObject(fn) {
     if (fs.existsSync(fn)) {
         var filec = fs.readFileSync(fn, { encoding: 'utf8' });
         try {
-            return JSON.parse(filec);
+            return eval(['(', filec, ')'].join(""));;
         }
         catch (e) {
             cli.writeerror('Failed parsing json object from file with error: ' + e.toString());

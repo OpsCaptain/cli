@@ -1,3 +1,4 @@
+var spawn = require('child_process').spawn;
 
 var colors = {
     BRIGHT_YELLOW: "\u001b[33;1m", 
@@ -8,6 +9,7 @@ var colors = {
     BRIGHT_GREEN: "\u001b[32;1m", 
     BRIGHT_BLUE: "\u001b[34;1m",
     BRIGHT_BLACK: "\u001b[30;1m",
+    BRIGHT_MAGENTA: "\u001b[35;1m",
     BLACK : "\u001b[30m",
     BLUE: "\u001b[34", 
     BRIGHT_CYAN: "\u001b[36;1m", 
@@ -58,6 +60,7 @@ if (!"".hasOwnProperty("trim")) {
     }
 }
 
+
 module.exports = {
     writeerror : writeerror,
     writeline : writeline,
@@ -65,6 +68,48 @@ module.exports = {
     errorline: errorline,
     cout: cout,
     colors: colors,
+    checkIsLatest: function (cur_version, cb) {
+        var ld = require('./Spinner')('Checking CLI latest version from npm...    ');
+        ld.start();
+
+        var WIN_32 = /^win/.test(process.platform);
+        var proc_handle = null;
+        if (WIN_32) {
+            proc_handle = spawn('cmd.exe', ['/c', 'npm', 'show', 'opscaptain-cli', 'version'])
+        }
+        else {
+            proc_handle = spawn('npm', ['show', 'opscaptain-cli', 'version']);
+        }
+
+        var had_data = 0, all_str = '';
+
+        proc_handle.stdout.on('data', function (data) {
+            var str = data.toString();
+            all_str += str;
+        });
+
+        proc_handle.stderr.on('data', function (data) {
+            had_data = 1;
+        })
+
+        proc_handle.on('close', function (data) {
+            all_str = all_str.trim();
+            ld.stop();
+
+            if (all_str != cur_version) {
+                writeline('A new version of the CLI is currently available: [v' + all_str + ']'); 
+                writeline('Update to the latest using the below command:');
+                writeline('\u001b[32;1mnpm install -g opscaptain-cli\u001b[0m');
+                console.log('');
+            }
+            else {
+                writeline('You are currently running the latest version of the OpsCaptain CLI: [v' + cur_version + ']');
+                console.log('');
+            }
+
+            cb();
+        });
+    },
     blueFont :  function(e){
         console.log(colors.BRIGHT_CYAN + e + colors.RESET); 
     }, 
@@ -75,13 +120,16 @@ module.exports = {
     }, 
     errors : {
         expectsName: function (command) {
-            writeerror('The [' + command + '] command expects the [-n] parameter which is used to specify the name of the app')
+            writeerror('The [' + command + '] command expects the [-n] parameter which is used to specify the name of the app');
+            process.exit(1);
         },
         expectsParameter : function(p, cmd){
-            writeerror('The ' + writevariable(cmd) + ' command expects the ' + writevariable(p) + ' parameter'); 
+            writeerror('The ' + writevariable(cmd) + ' command expects the ' + writevariable(p) + ' parameter');
+            process.exit(1);
         }, 
         unknownSwitch : function(s, cmd){
-            writeerror('Unknown parameter ' + writevariable(s) + ' specified for command: ' + writevariable(cmd)); 
+            writeerror('Unknown parameter ' + writevariable(s) + ' specified for command: ' + writevariable(cmd));
+            process.exit(1);
         }
     }, 
     randomId : function getId() {
@@ -130,5 +178,26 @@ module.exports = {
             switchExpectsValue(args, i);
 
         process.exit(1); 
+    },
+    String: {
+        nullorempty: function (value) {
+            return null == value || "" == value; 
+        },
+        isEmail : function (the_value) {
+            var chk = 0, at = 0, at_index = 0;
+
+            for (var i = 0; i < the_value.length; i++) {
+                if (the_value.charAt(i) == '@') {
+                    ++at;
+                    at_index = i;
+                }
+                else if (the_value.charAt(i) == '.')
+                    chk = i;
+            }
+
+            if (!(at == 1 && chk > at_index)) return false; 
+
+            return true;
+        }
     }
 }; 

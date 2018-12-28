@@ -7,7 +7,8 @@ var cli = require('../occ'),
     status = require('../deploymentstatus'),
     endpoints = require('../endpoints'),
     remote = require('../remotecommon'), 
-    spawn = require('child_process').spawn; 
+    spawn = require('child_process').spawn, 
+    spin = require('../Spinner')(''); 
 
 var OC_BUNDLE_FILENAME = '__ocbundle__.zip',
     OC_ASSET_STATE_NEW = 1,
@@ -66,7 +67,7 @@ function recursivelyAddToArchive(base_dir, p_array, tracker, is_base_dir, ignore
     }
 }
 
-function deploy(bundle_path, app_name, oc_env, unlink) {
+function deploy(bundle_path, app_name, oc_env, unlink, is_incremental, cb) {
     var id = cli.randomId();
     var request_path = OC_DEPLOY_ENDPOINT;
 
@@ -87,6 +88,10 @@ function deploy(bundle_path, app_name, oc_env, unlink) {
     meta_data['deployid'] = id;
     meta_data['appid'] = app_name;
 
+    if (is_incremental) {
+        meta_data['incremental'] = 1;
+    }
+
     cli.writeline('Binary info: ' + JSON.stringify(meta_data, null, 2)); 
     cli.writeline('Lift off!');
     console.log(''); 
@@ -105,16 +110,16 @@ function deploy(bundle_path, app_name, oc_env, unlink) {
             }
         }
     }, function (err, res, body) {
+        if (unlink)
+            fs.unlinkSync(bundle_path);
+
         if (err) {
             cli.writeerror(err); 
         }
-
-        if (unlink)
-            fs.unlinkSync(bundle_path); 
     });
 
     // start polling for the status update..
-    var prog = new status(id, app_name);
+    var prog = new status(id, app_name, cb);
     prog.startPolling(); 
 }
 
@@ -179,7 +184,7 @@ function DetectApplicationType(bin_path) {
                     langr = path.join(langr, _path[x]);
 
                 if (fs.existsSync(langr)) {
-                    if (_path[x].charAt('*')) {
+                    if (_path[x].charAt(0) == '*') {
                         if (hasAssetEndingWith(langr, _path[x]))
                             return [s];
                     }
@@ -274,7 +279,8 @@ function MeteorBuild(binary_path, app_id, environment, cb) {
     meteor.on('close', function () {
 
         if (!fs.existsSync(build_output)) {
-            cli.writeerror('Cannot find the build ouput of your meteor application: ' + cli.writevariable(build_file_name) + ' in the build location: ' + output_bin_path); 
+            cli.writeerror('Cannot find the build ouput of your meteor application: ' + cli.writevariable(build_file_name) + ' in the build location: ' + output_bin_path);
+            process.exit(1);
             return; 
         }
 
@@ -282,7 +288,7 @@ function MeteorBuild(binary_path, app_id, environment, cb) {
     });
 }
 
-function Package(binary_path, environment, application_name, start_script) {
+function Package(binary_path, environment, application_name, start_script, reset_tracking) {
     cli.writeline('Using application directory ' + cli.writevariable(binary_path));
 
     if (!fs.existsSync(binary_path)) {
@@ -300,13 +306,14 @@ function Package(binary_path, environment, application_name, start_script) {
             || (is_java_type = binary_path.endsWith(".jar"))
             || (is_java_type = binary_path.endsWith(".war")))) {
             cli.writeerror('Acceptable file formats to deploy include: [.zip], [.tgz], [.tar.gz], [.jar] and [.war]');
+            process.exit(1);
             return;
         }
 
         if (!environment.buildpacks || environment.buildpacks.length == 0) {
             if (!is_java_type) {
                 cli.writeerror('Expecting the buildpacks attribute in the ocmanifest.json file when deploying an archived build');
-                cli.writeline('Acceptable buildpacks')
+                process.exit(1);
                 return;
             }
             else {
@@ -314,7 +321,7 @@ function Package(binary_path, environment, application_name, start_script) {
             }
         }
 
-        deploy(binary_path, application_name, environment, false);
+        deploy(binary_path, application_name, environment, false, false);
         return;
     }
 
@@ -322,7 +329,8 @@ function Package(binary_path, environment, application_name, start_script) {
         environment.buildpacks = DetectApplicationType(binary_path);
         if (!(environment.buildpacks && environment.buildpacks.length > 0)) {
             cli.writeerror('Failed resolving the buildpacks to be used to build this application. You can specify the buildpacks for your application in the ocmanifest.json file');
-            cli.writeerror('https://www.opscaptain.com/docs/ocmanifest')
+            cli.writeerror('https://www.opscaptain.com/docs/ocmanifest');
+            process.exit(1);
             return; 
         }
         cli.writeline(environment.buildpacks[0] + ' project detected');
@@ -341,18 +349,16 @@ function Package(binary_path, environment, application_name, start_script) {
         }
 
         MeteorBuild(binary_path, application_name, environment, function (bin_path) {
-            deploy(bin_path, application_name, environment, true);
+            deploy(bin_path, application_name, environment, true, false);
         });
 
         return; 
     }
-
-    var changes_track_file = __dirname + '/' + application_name + '.json';
+    
+    var ctfn = '__oc__' + application_name + '.json'; 
+    var changes_track_file = path.join(binary_path, ctfn);
     var obj = {};
-
     /*
-    * Disable incremental deployment for now.
-    *
     if (reset_tracking) {
         obj = {};
     }
@@ -369,15 +375,16 @@ function Package(binary_path, environment, application_name, start_script) {
             }
         }
     }
-    */
-
+    **/
     var ignore_file = path.join(binary_path, OC_IGNORE),
         ignore_set = {
             '.git': 1,
             '.ocignore': 1,
             'node_modules': 1,
             '__ocbundle__.zip': 1
-        };//put ignore files in a dict for easy lookup
+        };
+
+    ignore_set[ctfn] = 1;
 
     if (fs.existsSync(ignore_file)) {
         var ignore_file = fs.readFileSync(ignore_file, { encoding: 'utf8' });
@@ -410,20 +417,20 @@ function Package(binary_path, environment, application_name, start_script) {
             return;
         }
         if (!o.exists) {
-            cli.debug('Remote must delete file: ' + cli.writevariable(s));
+            cli.writeline('Remote must delete file: ' + cli.writevariable(s));
             remote_delete.push(s);
             has_changes = true;
         }
         else {
             if (o.state == OC_ASSET_STATE_NEW) {
                 has_changes = true;
-                cli.debug('Remote accept new file: ' + cli.writevariable(s));
+                cli.writeline('Remote accept new file: ' + cli.writevariable(s));
                 changes[s] = o;
             }
             else if (o.state == OC_ASSET_STATE_MODIFIED) {
                 has_changes = true;
                 changes[s] = o;
-                cli.debug('Remote overwrite existing file: ' + cli.writevariable(s));
+                cli.writeline('Remote overwrite existing file: ' + cli.writevariable(s));
             }
         }
     }
@@ -443,8 +450,22 @@ function Package(binary_path, environment, application_name, start_script) {
     });
 
     output.on('close', function () {
+        spin.stop();
         cli.writeline('Length of zip archive in bytes: [' + archive.pointer() + ']');
-        deploy(bundle_path, application_name, environment, true);
+        var is_inc_deploy = false ; /*
+        if (!reset_tracking) {
+            if (fs.existsSync(changes_track_file))
+                is_inc_deploy = true; 
+        }
+        **/
+        deploy(bundle_path, application_name, environment, true, is_inc_deploy, function (is_err) {
+            if (!is_err) {
+                //fs.writeFileSync(changes_track_file, JSON.stringify(obj, null, 2));
+            }
+            else {
+                process.exit(1); 
+            }
+        });
     });
 
 
@@ -455,6 +476,7 @@ function Package(binary_path, environment, application_name, start_script) {
         if (err.code === 'ENOENT') {
             // user somehow managed to delete file as archiving was happening..
         } else {
+            spin.stop();
             cli.writeerror(err.toString())
             fs.fs.unlinkSync(bundle_path);
             process.exit(1);
@@ -469,7 +491,8 @@ function Package(binary_path, environment, application_name, start_script) {
 
     archive.pipe(output);
 
-    cli.writeline('Creating zip archive');
+    spin.text = 'Creating zip archive...      ';
+    spin.start(); 
 
     for (var s in changes) {
         try 
@@ -477,14 +500,20 @@ function Package(binary_path, environment, application_name, start_script) {
             archive.append(fs.createReadStream(changes[s].path), { name: s });
         }
         catch (e) {
+            spin.stop();
             cli.writeerror('Cannot add resource to archive - Error: ' + e);
             cli.writeerror(changes[s].path);
             return;
         }
     }
 
-    if (remote_delete.length > 0)
+    if (remote_delete.length > 0) {
         archive.append(JSON.stringify(remote_delete), { name: OC_REMOTE_DELETIONS_FILENAME });
+
+        for (var i = 0; i < remote_delete.length; i++) {
+            delete obj[remote_delete[i]];
+        }
+    }
 
     archive.finalize();
 }
@@ -599,7 +628,7 @@ function HandleRequest(args) {
     remote.resolveAppId(application_name, app_id, 'deploy', function (id) {
         cli.debug('Deploy to application with id ' + cli.writevariable(id));
 
-        Package(bin_path, environment, id, cmd);
+        Package(bin_path, environment, id, cmd, reset_tracking);
     });
 }
 

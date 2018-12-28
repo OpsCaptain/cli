@@ -159,7 +159,9 @@ function HandleRequest(args) {
                 else if (a.ts < b.ts) return -1;
                 else return 1;
             });
-
+            
+            if (log_entries.length > print_num)
+                log_entries.splice(0, log_entries.length - print_num);
 
             for (var i = 0; i < log_entries.length && print_num > 0;) {
                 var log = log_entries[i], p_set = [log];

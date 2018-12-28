@@ -21,6 +21,7 @@ module.exports = function (args) {
     str.push('  -p        Specify the path to your application folder or build output\n');
     str.push('  -e        Specify the path to the ocmanifest.json file. Supports\n');
     str.push('            both relative and absolute paths\n');
+    str.push('  --rups    On rolling updates, wait until the new container binds to the listening port before rolling\n');
     str.push('  --ruas    On rolling updates, the number of seconds to wait before replacing containers\n');
     str.push('  --tail    Specify the number of lines of log entries to print\n');
     str.push('  --db      The specified command is to be executed for database containers instead of app containers\n');
@@ -29,7 +30,7 @@ module.exports = function (args) {
     str.push('\n')
     str.push('Buildpacks:\n');
     str.push('  nodejs    https://github.com/heroku/heroku-buildpack-nodejs\n');
-    str.push('  meteor    https://www.opscaptain.com/docs/nodejs/meteorjs-hosting (For Meteor.js projects)\n');
+    str.push('  meteor    https://github.com/AdmitHub/meteor-buildpack-horse (For Meteor.js projects)\n');
     str.push('  ruby      https://github.com/cloudfoundry/ruby-buildpack\n');
     str.push('  dotnet    https://github.com/cloudfoundry/dotnet-core-buildpack/\n');
     str.push('  python    https://github.com/cloudfoundry/python-buildpack\n');
@@ -41,6 +42,12 @@ module.exports = function (args) {
     str.push('  static    https://github.com/cloudfoundry/staticfile-buildpack (Deploy static websites)\n');
     str.push('\n')
     str.push('Examples:\n');
-    str.push('  deploy    opscaptain deploy -n myapp -bp nodejs -ev "API_KEY=some-secret"\n');
+    str.push('  login     \u001b[35;1mopscaptain login -em dev@example.com -pw cannottellyou\u001b[0m\n');
+    str.push('  deploy    \u001b[35;1mopscaptain deploy -n myapp -bp nodejs -ev "API_KEY=some-secret"\u001b[0m\n');
+    str.push('            \u001b[35;1mopscaptain deploy -n myapp -bp elixir,phoenix-static\u001b[0m\n');
+    str.push('  status    \u001b[35;1mopscaptain status -n myapp\u001b[0m\n');
+    str.push('  logs      \u001b[35;1mopscaptain logs -n myapp --tail 50\u001b[0m\n');
+    str.push('  restart   \u001b[35;1mopscaptain restart -n myapp\u001b[0m\n');
+    str.push('  stop      \u001b[35;1mopscaptain stop -n myapp\u001b[0m\n');
     console.log(str.join("")); 
 }

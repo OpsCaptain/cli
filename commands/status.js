@@ -82,10 +82,10 @@ function HandleRequest(args) {
         set = obj.instances;
         var dimensions = [15, 25, 30, 10];
         var headers = []
-        headers.push(writeCell('Name', dimensions[0]));
-        headers.push(writeCell('Status', dimensions[1]));
-        headers.push(writeCell('Memory', dimensions[2]));
-        headers.push(writeCell('CPU', dimensions[3]));
+        headers.push(writeCell('NAME', dimensions[0]));
+        headers.push(writeCell('STATUS', dimensions[1]));
+        headers.push(writeCell('% MEM', dimensions[2]));
+        headers.push(writeCell('% CPU', dimensions[3]));
         
         var row_width = dimensions[0]; 
         for (var i = 1; i < dimensions.length; i++)
@@ -97,8 +97,7 @@ function HandleRequest(args) {
 
         var border = lborder.join(""); 
       **/
-        console.log("\u001b[47m" + cli.colors.BLACK + headers.join("") + cli.colors.RESET);
-        console.log('');
+        console.log(cli.colors.BRIGHT_MAGENTA + headers.join("") + cli.colors.RESET);
 
         for (var i = 0; i < set.length; i++) {
             var row = [];

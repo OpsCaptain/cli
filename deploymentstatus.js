@@ -3,7 +3,7 @@ var request = require('request'),
     remote = require('./remotecommon'), 
     cli = require('./occ');
 
-function DeploymentStatus(deployment_id, app_id) {
+function DeploymentStatus(deployment_id, app_id, cb) {
     this.id = deployment_id;
     this.appid = app_id;
     this.queryStr = { appid: this.appid, id: this.id };
@@ -12,7 +12,8 @@ function DeploymentStatus(deployment_id, app_id) {
 
     this.url = endpoints.status;
     this.error_count = 0;
-    this.eof = false; 
+    this.eof = false;
+    this.callback = cb;
     var self = this;
 
     this.PrintStatus = function (obj) {
@@ -21,7 +22,8 @@ function DeploymentStatus(deployment_id, app_id) {
                 if (obj.logs[i] == 'Done') {
                     this.eof = true;
                     console.log(''); 
-                    cli.writeline('Deployment in orbit - Check for stability using the status and logs commands')
+                    cli.writeline('Deployment in orbit - Check for stability using the status and logs commands');
+                    if (self.callback) self.callback(false); 
                     return; 
                 }
 
@@ -44,15 +46,19 @@ function DeploymentStatus(deployment_id, app_id) {
                     err = node.err.split("\\n");
                     for (var i = 0; i < err.length; i++)
                         cli.errorline(err[i].replace(/\\/g, ''));
-
-                    return;
                 }
                 catch (e) {
 
                 }
             }
+            else {
+                cli.writeerror(obj.err);
+            }
+
+            if (self.callback) self.callback(true);
 
             cli.writeerror(obj.err);
+            process.exit(1);
             return;
         }
 
