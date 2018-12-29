@@ -33,6 +33,7 @@ function auth(auth_json) {
         }
         catch (e) {
             cli.writeerror(e);
+            process.exit(1);
         }
     });
 }

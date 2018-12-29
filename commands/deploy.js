@@ -24,7 +24,13 @@ var OC_BUNDLE_FILENAME = '__ocbundle__.zip',
 function recursivelyAddToArchive(base_dir, p_array, tracker, is_base_dir, ignore_set) {
 
     var key_prefix = p_array.join('/');
-    var files = fs.readdirSync(base_dir); 
+    var files = fs.readdirSync(base_dir);
+
+    if (files.length == 0) {
+        // empty directory..
+        tracker[key_prefix] = { mt: mt, exists: true, is_dir: true, state: NC_ASSET_STATE_NEW, path: base_dir };
+        return;
+    }
     
     for (var i = 0, ii = p_array.length; i < files.length; i++) {
         if (files[i] == OC_BUNDLE_FILENAME) continue;
@@ -414,17 +420,24 @@ function Package(binary_path, environment, application_name, start_script, reset
         var o = obj[s];
         if (s == OC_REMOTE_DELETIONS_FILENAME) {
             cli.writeerror('Cannot name file using reserved name ' + cli.writevariable(OC_REMOTE_DELETIONS_FILENAME));
+            process.exit(1);
             return;
         }
         if (!o.exists) {
-            cli.writeline('Remote must delete file: ' + cli.writevariable(s));
+            if (o.is_dir)
+                cli.writeline('Remote delete directory: ' + cli.writevariable(s));
+            else
+                cli.writeline('Remote must delete file: ' + cli.writevariable(s));
             remote_delete.push(s);
             has_changes = true;
         }
         else {
             if (o.state == OC_ASSET_STATE_NEW) {
                 has_changes = true;
-                cli.writeline('Remote accept new file: ' + cli.writevariable(s));
+                if (o.is_dir)
+                    cli.writeline('Remote accept new directory ' + cli.writevariable(s));
+                else
+                    cli.writeline('Remote accept new file: ' + cli.writevariable(s));
                 changes[s] = o;
             }
             else if (o.state == OC_ASSET_STATE_MODIFIED) {
@@ -497,12 +510,16 @@ function Package(binary_path, environment, application_name, start_script, reset
     for (var s in changes) {
         try 
         {
-            archive.append(fs.createReadStream(changes[s].path), { name: s });
+            if (changes[s].is_dir)
+                archive.append(null, { name: s + '/' });
+            else
+                archive.append(fs.createReadStream(changes[s].path), { name: s }); 
         }
         catch (e) {
             spin.stop();
             cli.writeerror('Cannot add resource to archive - Error: ' + e);
             cli.writeerror(changes[s].path);
+            process.exit(1);
             return;
         }
     }
