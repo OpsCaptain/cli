@@ -42,7 +42,7 @@ Lets assume an application with name `thycaptain` has been created from the dash
 ```
 * `-ev` - You can also specify environment variables using this switch as seen below:
 ```
-$ oc deploy -n thycaptain -ev "VAR1=For thy shall obey thy captain" -ev "var1=value"
+$ oc deploy -n thycaptain -ev "VAR1=For thou shall obey thy captain" -ev "var1=value"
 ```
 * `-p` - If the directory in which the deploy command was run is not the directory one intends to deploy, you can use this switch to specify the absolute or relative path to the target directory or build artifact.
 * `-bp` - Specify the buildpack(s) to be used to build this application. For multiple buildpacks, separate each value with a comma.

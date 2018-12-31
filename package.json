@@ -1,6 +1,6 @@
 {
   "name": "opscaptain-cli",
-  "version": "2.1.0",
+  "version": "2.1.2",
   "description": "The OpsCaptain CLI for application management",
   "main": "index.js",
   "dependencies": {
@@ -8,7 +8,8 @@
     "request": "^2.83.0"
   },
   "bin": {
-    "opscaptain": "./bin/run"
+    "opscaptain": "./bin/run", 
+    "oc": "./bin/run"
   },
   "repository": {
     "type": "git",
